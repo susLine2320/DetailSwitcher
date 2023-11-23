@@ -3,3 +3,8 @@ Debug/
 release/
 x64/
 */DetailManager.vcxproj.user
+*.aux
+*.log
+*.tex
+*.gz
+*.dvi

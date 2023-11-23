@@ -2,7 +2,7 @@
 wchar_t g_module_dir[MAX_PATH];
 
 #define MAX_DETAILMODULE_NUM 64
-
+#define USEINI 1
 
 
 typedef void (WINAPI* DETAILMODULE_ATSLOAD)(void);
@@ -54,7 +54,10 @@ bool g_first_time;
 #include <sys/stat.h>
 #include <stdio.h>
 
+
+//#include "ini.h"    // #include "Ats.h"の上に書く
 #include "trigger.h"
+
 
 trigger g_trigger;
 bool g_load_failed;
@@ -80,6 +83,10 @@ BOOL WINAPI DllMain(
 
 		wcscpy(g_module_dir, drive);
 		wcscat(g_module_dir, dir);
+
+#if USEINI == 1
+
+#endif
 	}
 
 	break;
@@ -96,15 +103,24 @@ BOOL WINAPI DllMain(
 	return true;
 }
 
+int IniIntGet(wchar_t* section, wchar_t* key, int standard, wchar_t* dir)
+{
+	int exp;
+	exp = GetPrivateProfileInt(section, key, standard, dir);
+	return exp;
+}
+
 // Called when this plug-in is loaded
 void WINAPI atsLoad()
 {
 	wchar_t detailmodules_txt_path[MAX_PATH];
+	wchar_t detailswitcher_ini_path[MAX_PATH];
 
 	g_first_time = true;
 	g_load_failed = false;
 
 	int ret;
+	int ret2;
 	{
 		struct _stat buf;
 
@@ -112,13 +128,21 @@ void WINAPI atsLoad()
 		memset(g_detailmodules, 0, sizeof(ST_DETAILMODULE_ATS_DELEGATE_FUNC) * MAX_DETAILMODULE_NUM);
 		memset(g_handles, 0, sizeof(ATS_HANDLES) * 2);
 
-		wcscpy(detailmodules_txt_path, g_module_dir);
+		wcscpy_s(detailmodules_txt_path, g_module_dir);
+		wcscpy_s(detailswitcher_ini_path, g_module_dir);
 		wcscat(detailmodules_txt_path, L"\\detailmodules.txt");
+		wcscat(detailswitcher_ini_path, L"\\DetailSwitcher.ini");
 
 		ret = _wstat(detailmodules_txt_path, &buf);
+		ret2 = _wstat(detailswitcher_ini_path, &buf);
 	}
 
 	if (ret)
+	{
+		char* p = 0; *p = 1;
+		return;
+	}
+	if (ret2)
 	{
 		char* p = 0; *p = 1;
 		return;
@@ -202,6 +226,27 @@ void WINAPI atsLoad()
 	}
 
 	fclose(fp);
+
+	//INIファイル読み込み
+	g_trigger.ini_ann1 = IniIntGet(L"Sound", L"here1", 21, detailswitcher_ini_path);
+	g_trigger.ini_ann2 = IniIntGet(L"Sound", L"here2", 22, detailswitcher_ini_path);
+	//g_trigger.ini_ann3 = IniIntGet(L"Sound", L"here3", 23, detailswitcher_ini_path);
+	g_trigger.ini_com1 = IniIntGet(L"Panel", L"First", 249, detailswitcher_ini_path);
+	g_trigger.ini_com2 = IniIntGet(L"Panel", L"Second", 250, detailswitcher_ini_path);
+	//g_trigger.ini_com3 = IniIntGet(L"Panel", L"Third", 251, detailswitcher_ini_path);
+	g_trigger.ini_com = IniIntGet(L"Panel", L"Company", 252, detailswitcher_ini_path);
+	g_trigger.ini_wait = IniIntGet(L"Trigger", L"Seconds", 30*1000, detailswitcher_ini_path);
+	g_trigger.ini_so1 = IniIntGet(L"Comp1", L"1", 59, detailswitcher_ini_path);
+	g_trigger.ini_so2 = IniIntGet(L"Comp1", L"2", 60, detailswitcher_ini_path);
+	g_trigger.ini_so3 = IniIntGet(L"Comp1", L"3", 61, detailswitcher_ini_path);
+	g_trigger.ini_so4 = IniIntGet(L"Comp1", L"4", 62, detailswitcher_ini_path);
+	g_trigger.ini_so5 = IniIntGet(L"Comp1", L"5", 63, detailswitcher_ini_path);
+	g_trigger.ini_jr1 = IniIntGet(L"Comp2", L"1", 59, detailswitcher_ini_path);
+	g_trigger.ini_jr2 = IniIntGet(L"Comp2", L"2", 60, detailswitcher_ini_path);
+	g_trigger.ini_jr3 = IniIntGet(L"Comp2", L"3", 61, detailswitcher_ini_path);
+	g_trigger.ini_jr4 = IniIntGet(L"Comp2", L"4", 62, detailswitcher_ini_path);
+	g_trigger.ini_jr5 = IniIntGet(L"Comp2", L"5", 63, detailswitcher_ini_path);
+	g_trigger.ini_reset = IniIntGet(L"Setting", L"Reset", 1, detailswitcher_ini_path);
 }
 
 // Called when this plug-in is unloaded
@@ -292,6 +337,18 @@ ATS_HANDLES WINAPI atsElapse(ATS_VEHICLESTATE vs, int* p_panel, int* p_sound)
 		}
 		else
 		{
+			if (g_trigger.ini_reset != 0)
+			{
+				for (int i = 0; i < 256; ++i)
+				{
+					p_panel[i] = 0;
+				}
+				for (int i = 0; i < 256; ++i)
+				{
+					p_sound[i] = ATS_SOUND_STOP;
+				}
+			}
+
 			if (g_handles[0].Power != g_handles[1].Power)
 			{
 				if (g_detailmodules[0].atsSetPower != NULL)
@@ -486,11 +543,12 @@ void WINAPI atsSetSignal(int signal)
 {
 	for (int i = 0; i < g_num_of_detailmodules; ++i)
 	{
+		/*
 		if (!g_trigger.is_enable(i))
 		{
 			continue;
 		}
-
+		*/
 		if (g_detailmodules[i].atsSetSignal != NULL)
 		{
 			g_detailmodules[i].atsSetSignal(signal);
@@ -503,14 +561,23 @@ void WINAPI atsSetBeaconData(ATS_BEACONDATA beacon_data)
 {
 	for (int i = 0; i < g_num_of_detailmodules; ++i)
 	{
+		/*
 		if (!g_trigger.is_enable(i))
 		{
 			continue;
 		}
-
+		*/
 		if (g_detailmodules[i].atsSetBeaconData != NULL)
 		{
 			g_detailmodules[i].atsSetBeaconData(beacon_data);
 		}
 	}
+	if (beacon_data.Type == 601) {
+		g_trigger.change_distance(beacon_data.Optional);
+	}
+	if (beacon_data.Type == 602) {
+		g_trigger.sotetsu_rinkai(beacon_data.Optional);
+	}
 }
+
+//UINT WINAPI GetPrivateProfileInt(LPCTSTR lpAppName, LPCTSTR lpKeyName, INT nDefault, LPCTSTR lpFileName)
